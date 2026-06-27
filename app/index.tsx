@@ -4,16 +4,77 @@ import { COLORES } from '@/constants/colors';
 import { supabase } from '@/libs/supabase';
 import * as NotificationService from '@/services/notifications';
 import { useAuthStore } from '@/store/useAuthStore';
-import { Picker } from '@react-native-picker/picker';
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import Toast from 'react-native-toast-message';
+
+// Solo importa el Picker nativo en iOS/Android — en web no existe
+const NativePicker =
+  Platform.OS !== 'web'
+    ? require('@react-native-picker/picker').Picker
+    : null;
+
 interface FormViewProps {
   step: number;
   gender: string;
   setGender: (gender: string) => void;
   username: string;
   setUsername: (username: string) => void;
+}
+
+function GenderPicker({
+  gender,
+  setGender,
+}: {
+  gender: string;
+  setGender: (g: string) => void;
+}) {
+  // En web usamos un <select> HTML nativo
+  if (Platform.OS === 'web') {
+    return (
+      <select
+        value={gender}
+        onChange={(e) => setGender(e.target.value)}
+        style={{
+          backgroundColor: '#f1f2f6',
+          borderRadius: 15,
+          width: '100%',
+          padding: '12px 16px',
+          fontSize: 14,
+          color: gender ? COLORES.textoOscuro : '#9ba3af',
+          border: '1px solid #e5e7eb',
+          marginTop: 10,
+          appearance: 'none',
+          cursor: 'pointer',
+        }}
+      >
+        <option value="">Selecciona tu género</option>
+        <option value="masculino">Masculino</option>
+        <option value="femenino">Femenino</option>
+      </select>
+    );
+  }
+
+  // En iOS/Android usamos el Picker nativo
+  return (
+    <View style={{ width: '100%', marginTop: 10 }}>
+      <NativePicker
+        selectedValue={gender}
+        onValueChange={setGender}
+        mode="dropdown"
+        style={{
+          backgroundColor: '#f1f2f6',
+          borderRadius: 15,
+          width: '100%',
+          color: COLORES.textoOscuro,
+        }}
+      >
+        <NativePicker.Item label="Selecciona tu género" value="" />
+        <NativePicker.Item label="Masculino" value="masculino" />
+        <NativePicker.Item label="Femenino" value="femenino" />
+      </NativePicker>
+    </View>
+  );
 }
 
 function FormView({
@@ -37,22 +98,8 @@ function FormView({
       );
     case 1:
       return (
-        <View style={{ width: '100%', marginTop: 10 }}>
-          <Picker
-            selectedValue={gender}
-            onValueChange={setGender}
-            mode="dropdown"
-            style={{
-              backgroundColor: '#f1f2f6',
-              borderRadius: 15,
-              width: '100%',
-              color: COLORES.textoOscuro,
-            }}
-          >
-            <Picker.Item label="Selecciona tu género" value="" />
-            <Picker.Item label="Masculino" value="masculino" />
-            <Picker.Item label="Femenino" value="femenino" />
-          </Picker>
+        <View style={{ width: '100%' }}>
+          <GenderPicker gender={gender} setGender={setGender} />
         </View>
       );
     default:
@@ -142,7 +189,6 @@ export default function LoginScreen() {
     return code;
   }
 
-  // ✅ FIX 1: Cada validación retorna true o undefined (no se mezclan con Toast.show)
   async function handleSaveUsername(): Promise<boolean> {
     const { data, error } = await supabase
       .from('profiles')
@@ -213,7 +259,6 @@ export default function LoginScreen() {
   }
 
   async function handleSaveProfile() {
-    // ✅ FIX 1: Early returns encadenados — se detiene en la primera validación fallida
     const isUsernameValid = await handleSaveUsername();
     if (!isUsernameValid) return;
 
@@ -247,7 +292,6 @@ export default function LoginScreen() {
         code = await createCode();
       }
 
-      // ✅ FIX 2: Verificar error del insert ANTES de continuar con el update
       const { error: insertError } = await supabase.from('profiles').insert({
         id: userId,
         username: username,
@@ -379,10 +423,6 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: '#fff',
   },
-  emoji: {
-    fontSize: 50,
-    marginBottom: 10,
-  },
   titulo: {
     fontSize: 32,
     fontWeight: 'bold',
@@ -398,12 +438,6 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 15,
     alignItems: 'center',
-  },
-  linkRegister: {
-    color: '#007bff',
-    marginTop: 15,
-    fontWeight: '600',
-    fontSize: 14,
   },
   formView: {
     width: '100%',
