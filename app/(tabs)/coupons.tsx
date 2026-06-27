@@ -4,8 +4,6 @@ import { COLORES } from '@/constants/colors';
 import { supabase } from '@/libs/supabase';
 import { createCoupon, deleteCoupon, getCoupons, redeemCoupon, updateCoupon } from '@/services/coupons';
 import { createNotification } from '@/services/notifications';
-import { useActionSheet } from '@expo/react-native-action-sheet';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useState } from 'react';
 import {
@@ -23,8 +21,26 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 
+// ActionSheet solo en nativo
+const ActionSheetProvider =
+  Platform.OS !== 'web'
+    ? require('@expo/react-native-action-sheet').ActionSheetProvider
+    : ({ children }: { children: React.ReactNode }) => <>{children}</>;
+
+const useActionSheet =
+  Platform.OS !== 'web'
+    ? require('@expo/react-native-action-sheet').useActionSheet
+    : () => ({ showActionSheetWithOptions: null });
+
+// DateTimePicker solo en nativo
+const DateTimePicker =
+  Platform.OS !== 'web'
+    ? require('@react-native-community/datetimepicker').default
+    : null;
+
 export default function Coupons() {
-  const { showActionSheetWithOptions } = useActionSheet();
+  const actionSheet = useActionSheet();
+  const showActionSheetWithOptions = actionSheet?.showActionSheetWithOptions ?? null;
 
   const [username, setUsername] = useState<string>('');
   const [userId, setUserId] = useState<string | null>(null);
@@ -43,6 +59,10 @@ export default function Coupons() {
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  // Modal de opciones para web (reemplaza ActionSheet)
+  const [optionsModalVisible, setOptionsModalVisible] = useState(false);
+  const [selectedCouponForOptions, setSelectedCouponForOptions] = useState<any>(null);
 
   async function loadData(uid: string) {
     try {
@@ -144,19 +164,23 @@ export default function Coupons() {
   }, [userId]);
 
   function handleLongPressCoupon(item: any) {
-    const options = ['✏️ Editar', '🗑️ Eliminar', 'Cancelar'];
-    const destructiveButtonIndex = 1;
-    const cancelButtonIndex = 2;
+    if (Platform.OS === 'web') {
+      // En web mostramos un modal simple en lugar del ActionSheet nativo
+      setSelectedCouponForOptions(item);
+      setOptionsModalVisible(true);
+      return;
+    }
 
+    const options = ['✏️ Editar', '🗑️ Eliminar', 'Cancelar'];
     showActionSheetWithOptions(
       {
         options,
-        cancelButtonIndex,
-        destructiveButtonIndex,
+        cancelButtonIndex: 2,
+        destructiveButtonIndex: 1,
         title: item.action,
         message: `Código: ${item.code}`,
       },
-      (selectedIndex) => {
+      (selectedIndex: number) => {
         if (selectedIndex === 0) openEditModal(item);
         if (selectedIndex === 1) handleDeleteCoupon(item);
       },
@@ -334,6 +358,73 @@ export default function Coupons() {
     );
   }
 
+  // Selector de fecha: nativo en iOS/Android, input HTML en web
+  function DatePickerField() {
+    if (Platform.OS === 'web') {
+      return (
+        <input
+          type="date"
+          min={new Date().toISOString().split('T')[0]}
+          value={expiresAt ? expiresAt.toISOString().split('T')[0] : ''}
+          onChange={(e) => {
+            if (e.target.value) {
+              setExpiresAt(new Date(e.target.value + 'T12:00:00'));
+            } else {
+              setExpiresAt(null);
+            }
+          }}
+          style={{
+            backgroundColor: '#F7F8FA',
+            borderRadius: 12,
+            padding: '12px 14px',
+            fontSize: 13,
+            color: '#374151',
+            border: '1px solid #e5e7eb',
+            width: '100%',
+            marginTop: 6,
+            cursor: 'pointer',
+          }}
+        />
+      );
+    }
+
+    return (
+      <>
+        <TouchableOpacity
+          style={styles.dateButton}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text style={styles.dateButtonText}>
+            {expiresAt
+              ? `⏰ Vence el ${expiresAt.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}`
+              : '📅 Sin fecha límite'}
+          </Text>
+          {expiresAt && (
+            <TouchableOpacity
+              onPress={() => setExpiresAt(null)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.clearDate}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
+
+        {showDatePicker && DateTimePicker && (
+          <DateTimePicker
+            value={expiresAt || new Date()}
+            mode="date"
+            minimumDate={new Date()}
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={(_: any, selectedDate?: Date) => {
+              setShowDatePicker(Platform.OS === 'ios');
+              if (selectedDate) setExpiresAt(selectedDate);
+            }}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -356,7 +447,7 @@ export default function Coupons() {
             <ActivityIndicator size="large" color={COLORES.principal} style={{ marginTop: 40 }} />
           ) : (
             <View style={{ gap: 14 }}>
-              {/* ── Cupones recibidos ── */}
+              {/* Cupones recibidos */}
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>📥 Para ti</Text>
@@ -378,7 +469,7 @@ export default function Coupons() {
                 )}
               </View>
 
-              {/* ── Cupones enviados ── */}
+              {/* Cupones enviados */}
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>📤 Enviados</Text>
@@ -400,7 +491,7 @@ export default function Coupons() {
                 )}
               </View>
 
-              {/* ── Canjear código ── */}
+              {/* Canjear código */}
               <View style={styles.redeemCard}>
                 <Text style={styles.sectionTitle}>Canjear código</Text>
                 <Text style={styles.sectionSubtitle}>Ingresa el código que recibiste</Text>
@@ -419,14 +510,60 @@ export default function Coupons() {
         }
       />
 
-      {/* ── FAB ── */}
+      {/* FAB */}
       {!loading && (
         <TouchableOpacity style={styles.fab} onPress={openCreateModal} activeOpacity={0.85}>
           <Text style={styles.fabIcon}>+</Text>
         </TouchableOpacity>
       )}
 
-      {/* ── Modal crear/editar ── */}
+      {/* Modal opciones (reemplaza ActionSheet en web) */}
+      <Modal
+        visible={optionsModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOptionsModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setOptionsModalVisible(false)}
+        >
+          <View style={[styles.modalCard, { paddingBottom: 24 }]}>
+            <Text style={styles.modalTitle}>{selectedCouponForOptions?.action}</Text>
+            <Text style={styles.modalSubtitle}>Código: {selectedCouponForOptions?.code}</Text>
+
+            <TouchableOpacity
+              style={styles.optionButton}
+              onPress={() => {
+                setOptionsModalVisible(false);
+                openEditModal(selectedCouponForOptions);
+              }}
+            >
+              <Text style={styles.optionText}>✏️ Editar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.optionButton, styles.optionDestructive]}
+              onPress={() => {
+                setOptionsModalVisible(false);
+                handleDeleteCoupon(selectedCouponForOptions);
+              }}
+            >
+              <Text style={[styles.optionText, { color: '#ef4444' }]}>🗑️ Eliminar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setOptionsModalVisible(false)}
+            >
+              <Text style={styles.cancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Modal crear/editar */}
       <Modal
         visible={modalVisible}
         transparent
@@ -466,37 +603,7 @@ export default function Coupons() {
               <Text style={styles.charCount}>{newAction.length}/120</Text>
 
               <Text style={styles.inputLabel}>Fecha límite (opcional)</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={styles.dateButtonText}>
-                  {expiresAt
-                    ? `⏰ Vence el ${expiresAt.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}`
-                    : '📅 Sin fecha límite'}
-                </Text>
-                {expiresAt && (
-                  <TouchableOpacity
-                    onPress={() => setExpiresAt(null)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Text style={styles.clearDate}>✕</Text>
-                  </TouchableOpacity>
-                )}
-              </TouchableOpacity>
-
-              {showDatePicker && (
-                <DateTimePicker
-                  value={expiresAt || new Date()}
-                  mode="date"
-                  minimumDate={new Date()}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, selectedDate) => {
-                    setShowDatePicker(Platform.OS === 'ios');
-                    if (selectedDate) setExpiresAt(selectedDate);
-                  }}
-                />
-              )}
+              <DatePickerField />
 
               <View style={{ marginTop: 16, gap: 10 }}>
                 {creating ? (
@@ -770,9 +877,24 @@ const styles = StyleSheet.create({
     color: '#9ba3af',
     fontWeight: 'bold',
   },
+  optionButton: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  optionDestructive: {
+    borderBottomWidth: 0,
+  },
+  optionText: {
+    fontSize: 15,
+    color: '#1f2937',
+    fontWeight: '500',
+  },
   cancelButton: {
     alignItems: 'center',
     paddingVertical: 12,
+    marginTop: 4,
   },
   cancelText: {
     color: '#6b7280',
