@@ -4,6 +4,7 @@ import { COLORES } from '@/constants/colors';
 import { useInvites } from '@/hooks/useInvites';
 import { useNotifications } from '@/hooks/useNotifications';
 import { supabase } from '@/libs/supabase';
+import * as InviteService from '@/services/invites';
 import * as NotificationService from '@/services/notifications';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useCallback, useEffect, useState } from 'react';
@@ -95,7 +96,8 @@ export default function NotificationsScreen() {
 
   async function handleAcceptInvite(inviteId: string) {
     try {
-      // Actualización optimista: quita la card al instante
+      const result = await InviteService.acceptInvite(inviteId);
+      if (result?.error) throw result.error;
       setInvites((prev) => prev.filter((i) => i.id !== inviteId));
       Toast.show({ type: 'success', text1: 'Invitación aceptada' });
       await refresh();
@@ -110,7 +112,8 @@ export default function NotificationsScreen() {
 
   async function handleDeclineInvite(inviteId: string) {
     try {
-      // Actualización optimista: quita la card al instante
+      const { error } = await InviteService.declineInvite(inviteId);
+      if (error) throw error;
       setInvites((prev) => prev.filter((i) => i.id !== inviteId));
       Toast.show({ type: 'success', text1: 'Invitación declinada' });
       await refresh();
